@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tiny Garden Ultimate 2.0</title>
+<style>
+body {
+  margin:0;
+  font-family:"Segoe UI Emoji","Noto Color Emoji","Apple Color Emoji",sans-serif;
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  min-height:100vh;
+  transition: background 2s linear;
+  background:#d0f5d8;
+}
+.game {
+  display:flex;
+  width:980px;
+  background:#fff;
+  border-radius:16px;
+  overflow:hidden;
+  visibility:hidden;
+}
+.sidebar {
+  padding:20px;
+  width:300px;
+  background:#e6f9e6;
+  display:flex;
+  flex-direction:column;
+}
+.title {
+  font-weight:900;
+  font-size:22px;
+  color:#0d562b;
+  margin-bottom:12px;
+}
+.money,.row{
+  margin-bottom:10px;
+  font-weight:700;
+  color:#4CAF50;
+}
+.selectPlant div{
+  cursor:pointer;
+  margin-bottom:6px;
+  padding:4px 6px;
+  background:#d0f9d0;
+  border-radius:6px;
+}
+.selectPlant div.active{
+  background:#4CAF50;
+  color:white;
+}
+.grid-wrap{
+  padding:14px;
+  flex:1;
+}
+.grid{
+  display:grid;
+  grid-template-columns:repeat(6,1fr);
+  gap:12px;
+}
+.plot{
+  height:110px;
+  background:#d8f0d8;
+  border:2px solid #c0e8c0;
+  border-radius:14px;
+  position:relative;
+  cursor:pointer;
+  display:flex;
+  align-items:flex-end;
+  justify-content:center;
+}
+.plant{
+  position:absolute;
+  bottom:44%;
+  font-size:28px;
+  opacity:0;
+  transform:translateY(10%) scale(0.85);
+  transition: all 0.3s;
+}
+.plant.show{
+  opacity:1;
+  transform:translateY(0) scale(1);
+}
+.npcSection,.shopSection{
+  margin-top:12px;
+  padding:8px;
+  border:1px solid #c0e8c0;
+  border-radius:10px;
+}
+.npc,.shopItem{
+  cursor:pointer;
+  padding:4px 6px;
+  margin-bottom:4px;
+  background:#d0f9d0;
+  border-radius:6px;
+}
+.log{
+  margin-top:12px;
+  height:120px;
+  overflow:auto;
+  padding:8px;
+  border-radius:8px;
+  background:#fbfff9;
+  border:1px solid #e8f4ea;
+}
+.loadingWrap{
+  position:fixed;
+  top:0;
+  left:0;
+  width:100%;
+  height:100%;
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
+  align-items:center;
+  background:#2e8b3a;
+  color:white;
+  font-weight:700;
+  z-index:9999;
+}
+#progressBar{
+  width:60%;
+  height:16px;
+  background:rgba(255,255,255,0.2);
+  border-radius:12px;
+  margin-top:14px;
+}
+#progressFill{
+  height:100%;
+  width:0;
+  background:white;
+  border-radius:12px;
+}
+.emoji {font-size:32px;margin-right:4px; vertical-align:middle;}
+.label {font-size:16px; vertical-align:middle;}
+</style>
+</head>
+<body>
+<div class="loadingWrap" id="loadingScreen">
+🌱 Tiny Garden Ultimate 2.0<br>
+Loading...
+<div id="progressBar"><div id="progressFill"></div></div>
+</div>
+
+<div class="game" id="gameDiv">
+<aside class="sidebar">
+<div class="title">🌼 Tiny Garden Ultimate 2.0</div>
+<div class="money">Money: $<span id="money">50</span></div>
+<div class="row">Seeds: <span id="seeds">5</span></div>
+<div class="row">Pots: <span id="pots">5</span></div>
+<div class="selectPlant" id="plantSelector"></div>
+<div class="npcSection"><b>NPC Quests:</b><div id="npcList"></div></div>
+<div class="shopSection"><b>Shop:</b><div id="shopList"></div></div>
+<div class="log" id="log"></div>
+</aside>
+<main class="main">
+<div class="grid-wrap"><div class="grid" id="garden"></div></div>
+</main>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded',()=>{
+const PLANTS={carrot:{emoji:'🥕',growthStages:3,reward:2,seedCost:1},strawberry:{emoji:'🍓',growthStages:3,reward:5,seedCost:2},apple:{emoji:'🍎',growthStages:6,reward:15,seedCost:6}};
+const SHOP=[{name:'Extra Seed',cost:5,action:()=>state.seeds+=1},{name:'Extra Pot',cost:10,action:()=>state.pots+=1}];
+const state={money:50,seeds:5,pots:5,plots:[],npcs:[],achievements:{}};
+
+const gardenEl=document.getElementById('garden');
+const moneyEl=document.getElementById('money');
+const seedsEl=document.getElementById('seeds');
+const potsEl=document.getElementById('pots');
+const logEl=document.getElementById('log');
+const plantSelector=document.getElementById('plantSelector');
+const npcListEl=document.getElementById('npcList');
+const shopListEl=document.getElementById('shopList');
+
+let selectedPlantKey='carrot';
+
+function addLog(txt){const d=document.createElement('div');d.textContent=txt;logEl.prepend(d);}
+function makePlot(){return {planted:false,plantKey:null,growth:0};}
+function ensurePlots(){while(state.plots.length<state.pots)state.plots.push(makePlot()); while(state.plots.length>state.pots)state.plots.pop();}
+function buildPlantOptions(){plantSelector.innerHTML='';for(const key in PLANTS){const p=PLANTS[key]; const el=document.createElement('div'); el.innerHTML='<span class="emoji">'+p.emoji+'</span><span class="label">'+key+'</span>'; el.addEventListener('click',()=>{selectedPlantKey=key; document.querySelectorAll('.selectPlant div').forEach(x=>x.classList.remove('active')); el.classList.add('active');}); plantSelector.appendChild(el);} document.querySelector('.selectPlant div')?.classList.add('active');}
+
+function spawnNPC(){const names=['Farmer Joe','Baker Sue','Chef Lily'];const emojis=['👨‍🌾','👩‍🍳','👩‍🍳'];const items=Object.keys(PLANTS); const npc={name:names[Math.floor(Math.random()*names.length)],emoji:emojis[Math.floor(Math.random()*emojis.length)],request:items[Math.floor(Math.random()*items.length)]}; state.npcs.push(npc); renderNPCs();}
+function renderNPCs(){npcListEl.innerHTML='';state.npcs.forEach((n,i)=>{const div=document.createElement('div'); div.className='npc'; div.innerHTML='<span class="emoji">'+n.emoji+'</span><span class="label">'+n.name+' wants '+n.request+'</span>'; div.addEventListener('click',()=>{giveItemToNPC(i)}); npcListEl.appendChild(div);});}
+function giveItemToNPC(index){const npc=state.npcs[index]; if(state.seeds>=1){state.seeds--; state.money+=5; addLog('Gave '+npc.request+' to '+npc.name+' for $5'); state.npcs.splice(index,1); renderNPCs(); updateHUD();} else{addLog(npc.name+' wants '+npc.request+' but you have none!');}}
+
+function renderShop(){shopListEl.innerHTML='';SHOP.forEach((s,i)=>{const div=document.createElement('div'); div.className='shopItem'; div.textContent=s.name+' ($'+s.cost+')'; div.addEventListener('click',()=>{if(state.money>=s.cost){state.money-=s.cost; s.action();addLog('Bought '+s.name); updateHUD();}else{addLog('Not enough money for '+s.name);}}); shopListEl.appendChild(div);});}
+
+function renderGarden(){gardenEl.innerHTML=''; state.plots.forEach((plot,i)=>{const div=document.createElement('div'); div.className='plot'; div.addEventListener('click',()=>plantOnPlot(i)); if(plot.planted){const p=document.createElement('div'); p.className='plant'; p.textContent=PLANTS[plot.plantKey].emoji; div.appendChild(p); setTimeout(()=>p.classList.add('show'),10);} gardenEl.appendChild(div);});}
+
+function plantOnPlot(i){const plot=state.plots[i]; if(!plot.planted&&state.seeds>=1){plot.planted=true;plot.plantKey=selectedPlantKey;state.seeds--; addLog('Planted '+selectedPlantKey);renderGarden();updateHUD();} else if(plot.planted){plot.growth++; if(plot.growth>=PLANTS[plot.plantKey].growthStages){state.money+=PLANTS[plot.plantKey].reward; addLog('Harvested '+plot.plantKey+' for $'+PLANTS[plot.plantKey].reward); plot.planted=false; plot.plantKey=null; plot.growth=0; renderGarden(); updateHUD();}}}
+
+function updateHUD(){moneyEl.textContent=Math.floor(state.money); seedsEl.textContent=state.seeds; potsEl.textContent=state.pots;}
+
+function updateBackground(){const hour=(new Date().getHours()+new Date().getMinutes()/60)/24; const r=Math.floor(208-50*hour); const g=Math.floor(245-50*hour); const b=Math.floor(216-100*hour); document.body.style.background='rgb('+r+','+g+','+b+')';}
+setInterval(updateBackground,1000);
+
+function initGame(){buildPlantOptions(); ensurePlots(); spawnNPC(); renderNPCs(); renderShop(); renderGarden(); updateHUD(); document.getElementById('loadingScreen').style.display='none'; document.getElementById('gameDiv').style.visibility='visible'; updateBackground();}
+
+initGame();
+});
+</script>
+</body>
+</html>
